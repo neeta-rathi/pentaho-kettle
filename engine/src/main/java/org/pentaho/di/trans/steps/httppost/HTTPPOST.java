@@ -40,6 +40,10 @@ import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.InputStreamEntity;
 import org.apache.http.entity.StringEntity;
+import org.apache.http.entity.mime.HttpMultipartMode;
+import org.apache.http.entity.mime.MultipartEntityBuilder;
+import org.apache.http.entity.mime.HttpMultipartMode;
+import org.apache.http.entity.mime.content.StringBody;
 import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.impl.client.BasicAuthCache;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -131,6 +135,7 @@ public class HTTPPOST extends BaseStep implements StepInterface {
       // Specify content type and encoding
       // If content encoding is not explicitly specified
       // ISO-8859-1 is assumed by the POSTMethod
+      /*
       if ( !data.contentTypeHeaderOverwrite ) { // can be overwritten now
         if ( Utils.isEmpty( data.realEncoding ) ) {
           post.setHeader( CONTENT_TYPE, CONTENT_TYPE_TEXT_XML );
@@ -145,6 +150,7 @@ public class HTTPPOST extends BaseStep implements StepInterface {
           }
         }
       }
+      */
 
       // HEADER PARAMETERS
       if ( data.useHeaderParameters ) {
@@ -159,12 +165,14 @@ public class HTTPPOST extends BaseStep implements StepInterface {
         }
       }
 
+      String jsonBodyParamValue = null;
       // BODY PARAMETERS
       if ( data.useBodyParameters ) {
         // set body parameters that we want to send
         for ( int i = 0; i < data.body_parameters_nrs.length; i++ ) {
           String bodyParameterName = data.bodyParameters[ i ].getName();
           String bodyParameterValue = data.inputRowMeta.getString( rowData, data.body_parameters_nrs[ i ] );
+          jsonBodyParamValue = bodyParameterValue;
           data.bodyParameters[ i ] = new BasicNameValuePair( bodyParameterName, bodyParameterValue );
           if ( isDebug() ) {
             logDebug( BaseMessages.getString( PKG, "HTTPPOST.Log.BodyValue", bodyParameterName,
@@ -201,8 +209,18 @@ public class HTTPPOST extends BaseStep implements StepInterface {
 
         if ( meta.isPostAFile() ) {
           File input = new File( tmp );
-          fis = new FileInputStream( input );
-          post.setEntity( new InputStreamEntity( fis, input.length() ) );
+
+          // build multipart upload request for box ( poc )
+          // to send file and any body params specified
+          HttpEntity httpEntity = MultipartEntityBuilder.create()
+                  .setMode( HttpMultipartMode.BROWSER_COMPATIBLE )
+                  .addPart( "attributes", new StringBody( jsonBodyParamValue, ContentType.TEXT_PLAIN ) )
+                  .addBinaryBody( "file", input, ContentType.APPLICATION_OCTET_STREAM, input.getName() )
+                  .build();
+
+          //fis = new FileInputStream( input );
+          //post.setEntity( new InputStreamEntity( fis, input.length() ) );
+          post.setEntity( httpEntity );
         } else {
           byte[] bytes;
           if ( ( data.realEncoding != null ) && ( data.realEncoding.length() > 0 ) ) {
@@ -329,7 +347,6 @@ public class HTTPPOST extends BaseStep implements StepInterface {
         "HTTPPOST.Error.UnknownHostException", uhe.getMessage() ) );
     } catch ( Exception e ) {
       throw new KettleException( BaseMessages.getString( PKG, "HTTPPOST.Error.CanNotReadURL", data.realUrl ), e );
-
     } finally {
       if ( fis != null ) {
         BaseStep.closeQuietly( fis );
